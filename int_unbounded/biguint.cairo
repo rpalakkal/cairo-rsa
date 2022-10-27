@@ -10,8 +10,8 @@ from starkware.cairo.common.memcpy import memcpy
 
 # Some constants
 # The file should be parametric over values for BIT_LENGTH up to 125
-const BIT_LENGTH = 125
-const SHIFT = 2 ** 125
+const BIT_LENGTH = 120
+const SHIFT = 2 ** 120
 const EON = -1
 # const NEG = -2
 
@@ -467,233 +467,13 @@ namespace biguint:
         return()
     end
 
-    func karatsuba{range_check_ptr}(x : BigUint, y : BigUint) -> (res : BigUint):
+    func mul_mod{range_check_ptr}(a : BigUint, b : BigUint, m : BigUint) -> (res : BigUint):
         alloc_locals
-        let (x_len) = len(x)
-        let (y_len) = len(y)
-        let both_single_digit = (x_len - 1) * (y_len - 1)
-        # if both_single_digit == 2:
-        #     tempvar arr : felt* = new (x.ptr[0] * y.ptr[0], -1)
-        #     return (res = BigUint(arr))
-        # end
-        if both_single_digit == 0:
-            #let (temp_result : BigUint) = mul(x, y)
-            local temp_result : felt*
-            %{
-                import sys, os
-                cwd = os.getcwd()
-                sys.path.append(cwd)
-                # hint populates quotient and remainder with correct results
-                from biguint_tools import num_to_int, int_to_num, peek_one_num_from
-                x = peek_one_num_from(memory, ids.x.ptr)
-                x = num_to_int(x)
-                y = peek_one_num_from(memory, ids.y.ptr)
-                y = num_to_int(y)
-                ids.temp_result = segments.gen_arg(int_to_num(x*y))
-            %}
-            return (res = BigUint(temp_result))
-        end
-        let both_zero = x_len + y_len
-        if both_zero == 0:
-            tempvar arr : felt* = new(-1,)
-            return (res = BigUint(arr))
-        end
 
-        local n : felt
-        %{
-            ids.n = max(ids.x_len, ids.y_len)
-        %}
-        assert_nn_le(x_len, n)
-        assert_nn_le(y_len, n)
-
-        let (local m, _) = unsigned_div_rem(n, 2)
-
-        local x_l : felt*
-        local x_h : felt*
-
-        local y_l : felt*
-        local y_h : felt*
-        %{
-        from biguint_tools import num_to_int, int_to_num, peek_one_num_from
-        x = peek_one_num_from(memory, ids.x.ptr)
-        x = x[:-1]
-        y = peek_one_num_from(memory, ids.y.ptr)
-        y = y[:-1]
-        x_l = x[:ids.m]
-        x_l.append(-1)
-        x_h = x[ids.m:]
-        x_h.append(-1)
-        y_l = y[:ids.m]
-        y_l.append(-1)
-        y_h = y[ids.m:]
-        y_h.append(-1)
-        ids.x_l = segments.gen_arg(x_l)
-        ids.x_h = segments.gen_arg(x_h)
-        ids.y_l = segments.gen_arg(y_l)
-        ids.y_h = segments.gen_arg(y_h)
-        %}
-        # assert_subarray_eq(x.ptr, x_l, m)
-        # assert x_l[m] = -1
-        # assert_subarray_eq(x.ptr + m, x_h, m + 1)
-        # assert_subarray_eq(y.ptr, y_l, m)
-        # assert y_l[m] = -1
-        # assert_subarray_eq(y.ptr + m, y_h, m + 1)
-
-        let (a : BigUint) = karatsuba(x = BigUint(x_h), y = BigUint(y_h))
-        let (d : BigUint) = karatsuba(x = BigUint(x_l), y = BigUint(y_l))
-        
-        let (b : BigUint) = add(BigUint(x_h), BigUint(x_l))
-        let (c : BigUint) = add(BigUint(y_h), BigUint(y_l))
-
-        let (e_recurse : BigUint) = karatsuba(x = b, y = c)
-        let (a_d_sum : BigUint) = add(a, d)
-        let (e : BigUint, _) = sub(e_recurse, a_d_sum)
-
-        local result : felt*
-        %{
-            import sys, os
-            cwd = os.getcwd()
-            sys.path.append(cwd)
-            # hint populates quotient and remainder with correct results
-            from biguint_tools import num_to_int, int_to_num, peek_one_num_from
-            a = peek_one_num_from(memory, ids.a.ptr)
-            a = num_to_int(a)
-
-            e = peek_one_num_from(memory, ids.e.ptr)
-            e = num_to_int(e)
-
-            d = peek_one_num_from(memory, ids.d.ptr)
-            d = num_to_int(d)
-            x = a*(ids.SHIFT**(ids.m*2)) + e*(ids.SHIFT**ids.m) + d
-            # temp = a*(SHIFT**(ids.m*2))
-            # print(int_to_num(a))
-            # print(int_to_num(256**(ids.m*2)))
-            # print(int_to_num(temp))
-            ids.result = segments.gen_arg(int_to_num(x))
-        %}
-        return (res = BigUint(result))
-    end
-
-    func div_karatsuba{range_check_ptr}(a : BigUint, b : BigUint) -> (res : BigUint, remainder : BigUint):
-        alloc_locals
-        # guess a result
-        local quotient_ptr : felt*
-        local remainder_ptr : felt*
-
-        # If a = 0 or b = 0, return (0, 0).
-        if ([b.ptr] - EON) * ([a.ptr] - EON) == 0:
-            %{
-                # populate quotient and remainder with 0, 0
-                ids.quotient_ptr = segments.gen_arg([ids.EON]) 
-                ids.remainder_ptr = segments.gen_arg([ids.EON])
-            %}
-            assert [quotient_ptr] = EON
-            assert [remainder_ptr] = EON
-            return (BigUint(quotient_ptr), BigUint(remainder_ptr))
-        end
-        # OK, so a and b are nonzero.
-        %{
-            import sys, os
-            cwd = os.getcwd()
-            sys.path.append(cwd)
-            # hint populates quotient and remainder with correct results
-            from biguint_tools import peek_one_num_from, num_div
-            a = peek_one_num_from(memory, ids.a.ptr)
-            b = peek_one_num_from(memory, ids.b.ptr)
-            (quotient, remainder) = num_div(a, b)
-            ids.quotient_ptr = segments.gen_arg(quotient)
-            ids.remainder_ptr = segments.gen_arg(remainder)
-        %}
-        # check that nonneterministically provided quotient and remainder are valid biguints
-        num_check(BigUint(quotient_ptr))
-        num_check(BigUint(remainder_ptr))
-        let (rem_is_not_zero) = is_not_zero(BigUint(remainder_ptr))
-        # Check that a = quotient * b + remainder
-        let (quotient_mul_b : BigUint) = karatsuba(BigUint(quotient_ptr), b)
-        let (quotient_mul_b__add__remainder) = add(quotient_mul_b, BigUint(remainder_ptr))
-        assert_eq(a, quotient_mul_b__add__remainder)
-        # Great.  Return result
-        return (BigUint(quotient_ptr), BigUint(remainder_ptr))
-    end
-
-    func mul_mod{range_check_ptr}(a : BigUint, b: BigUint, m : BigUint) -> (res : BigUint):
-        alloc_locals
-        %{
-            import sys, os
-            cwd = os.getcwd()
-            sys.path.append(cwd)
-            # hint populates quotient and remainder with correct results
-            from biguint_tools import peek_one_num_from, num_div
-            a = peek_one_num_from(memory, ids.a.ptr)
-            b = peek_one_num_from(memory, ids.b.ptr)
-            m = peek_one_num_from(memory, ids.m.ptr)
-            print(len(a), len(b), len(m))
-        %}
-        if a.ptr[0] == -1:
-            return (res = a)
-        end
-        if b.ptr[0] == -1:
-            return (res = b)
-        end
-
-        let a_is_one = a.ptr[0] * a.ptr[1]
-        if a_is_one == -1:
-            return (res = b)
-        end
-        
-        let b_is_one = b.ptr[0] * b.ptr[1]
-        if b_is_one == -1:
-            return (res = a)
-        end
-
-        let (two) = get_uint_two()
-        let (q, r) = div(b, BigUint(two))
-        let (a_2 : BigUint) = mul_mod(a, q, m)
-
-        let (r_is_not_zero) = is_not_zero(r)
-
-        local res : felt*
-        if r_is_not_zero == 0:
-            let (sum) = add(a_2, a_2)
-            let (_, sum_mod) = div(sum, m)
-            res = sum_mod.ptr
-        else:
-            let (_, a_mod) = div(a, m)
-            let (sum) = add(a_2, a_2)
-            let (final_sum) = add(sum, a_mod)
-            let (_, result) = div(final_sum, m)
-            res = result.ptr
-        end
-        return (res = BigUint(res))
-    end
-
-    func mul_mod_with_hints{range_check_ptr}(a : BigUint, b : BigUint, m : BigUint) -> (res : BigUint):
-        alloc_locals
-        local q : felt*
-        local rem : felt*
-        local hint_product : felt*
-        %{
-            import sys, os
-            cwd = os.getcwd()
-            sys.path.append(cwd)
-            from biguint_tools import num_to_int, int_to_num, peek_one_num_from
-            a = num_to_int(peek_one_num_from(memory, ids.a.ptr))
-            b = num_to_int(peek_one_num_from(memory, ids.b.ptr))
-            m = num_to_int(peek_one_num_from(memory, ids.m.ptr))
-            y = (a * b) % m
-            # print(y, (a * b // m) + m)
-            # print()
-            result = int_to_num(y)
-            ids.rem = segments.gen_arg(result)
-            ids.q = segments.gen_arg(int_to_num((a * b) // m))
-            ids.hint_product = segments.gen_arg(int_to_num(a * b))
-        %}
         let (product : BigUint) = mul(a, b)
         let (quotient : BigUint, remainder : BigUint) = div(product, m)
-        # let (sum : BigUint) = add(quotient, BigUint(rem))
-        assert_eq(BigUint(rem), remainder)
 
-        return (res = BigUint(rem))
+        return (res = remainder)
     end
 
     func pow_mod_felt_exponent{range_check_ptr}(s : BigUint, e : felt, m : BigUint) -> (res : BigUint):
@@ -714,20 +494,14 @@ namespace biguint:
         tempvar range_check_ptr = range_check_ptr
         local res : felt*
         if r == 0:
-            # let (square : BigUint) = mul(s, s)
-            # let (_, squareRem) = div(square, m)
-            # let (squareRem) = mul_mod(s, s, m)
-            let (squareRem) = mul_mod_with_hints(s, s, m)
+            let (squareRem) = mul_mod(s, s, m)
             let (result : BigUint) = pow_mod_felt_exponent(s = squareRem, e = q, m = m)
             res = result.ptr
             tempvar range_check_ptr = range_check_ptr
         else:
             let new_e = e - 1
             let (recurse : BigUint) = pow_mod_felt_exponent(s = s, e = new_e, m=m)
-            # let (product : BigUint) = mul(s, recurse)
-            # let (_, result) = div(product, m)
-            # let (result) = mul_mod(s, recurse, m)
-            let (result) = mul_mod_with_hints(s, recurse, m)
+            let (result) = mul_mod(s, recurse, m)
             res = result.ptr
             tempvar range_check_ptr = range_check_ptr
         end

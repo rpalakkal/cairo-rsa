@@ -6,7 +6,7 @@ from starkware.cairo.lang.cairo_constants import DEFAULT_PRIME
 # Some key constants
 
 # File is parametric over values for BIT_LENGTH up to 125.  Smaller values (e.g. 8) may be helpful for testing and debugging.
-BIT_LENGTH = 125
+BIT_LENGTH = 120
 SHIFT = 125**BIT_LENGTH
 MIN_VAL = 0
 MAX_VAL = SHIFT - 1
